@@ -2,6 +2,7 @@ from sklearn.metrics import precision_recall_fscore_support
 from DeepBinaryHash.networks import AugmentedAlexNet
 from DeepBinaryHash.readDataset import *
 from torchsummary import summary
+import matplotlib.pyplot as plt
 import torch.optim as optim
 import numpy as np
 
@@ -21,6 +22,48 @@ def weight_reset(m):
 def hamming(a, b):
     """Calculate the Hamming distance between two lists."""
     return len([i for i in filter(lambda x: x[0] != x[1], zip(a, b))])
+
+
+def distance(x1, x2):
+    """Euclidean distance"""
+    d = 0
+    # For each of the features in the feature vector x1
+    for i in range(len(x1)):
+        d += (abs(x1[i] - x2[i]) ** 2)
+    d = d ** (1 / 2)
+    return d
+
+
+def imageRetrieval(code, features, query=None, ki=10):
+    """Coarse-fine search strategy.
+    . Step 1: Identify a pool of similar candidates using Hamming distance.
+    . Step 2: Identify the top k similar images.
+    @param code: Binary hash codes.
+    @param features: Features vectors (outputs of the layer 7, the second fully-connected layer of the network).
+    @param query: Index of the query image.
+    @param ki: Desired number of similar images to be retrieved."""
+
+    # Step 1: Get the pool of candidates
+    Hq = code[query]
+    P = []
+    for i, Hi in enumerate(code):  # Loop through the entire test set to find the pool P
+        if i != query:
+            # Verify if the Hamming distance between Hq and Hi is < 8
+            if hamming(Hq.tolist(), Hi.tolist()) < 8:
+                P.append((i, Hi))  # Append the pair index-hash code to the pool
+
+    # Step 2: Calculate the Euclidean distance between Hq and each image of the pool P
+    Vq = features[query]
+    distances = []
+    for i, Hi in P:
+        if i != query:
+            ViP = features[i]
+            distances.append((i, distance(Vq, ViP)))  # Append the pair index-distance to the list
+    # Sort the list based on the distances
+    distances.sort(key=lambda x: x[1])
+
+    # Select the indexes of the top k-images
+    return [i for i, _ in distances][:ki]
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -68,7 +111,7 @@ class TuneHash:
                 inputs, labels = data
                 inputs, labels = inputs.to(self.device), labels.long().to(self.device)
                 # Evaluate batch
-                _, ypred_batch = self.model(inputs)
+                _, ypred_batch, _ = self.model(inputs)
                 # Get outputs
                 y_pred_softmax = torch.log_softmax(ypred_batch, dim=1)
                 _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
@@ -87,6 +130,7 @@ class TuneHash:
         self.model.load_state_dict(torch.load(".//models//hash-alexnet-" + self.data + "-" + str(self.bits) + "bits"))
         # Get the binary codes (threshold=0.5) from the H layer
         hpred = []
+        fpred = []
         ytest = []
         images = []
         with torch.no_grad():
@@ -96,12 +140,13 @@ class TuneHash:
                 inputs, labels = data
                 inputs, labels = inputs.to(self.device), labels.long().to(self.device)
                 # Evaluate batch
-                hpredbatch, ypred_batch = self.model(inputs)
+                hpredbatch, ypred_batch, feature_batch = self.model(inputs)
                 # Concatenate results
                 hpred = hpred + (torch.round(hpredbatch).cpu().numpy()).tolist()  # Add binarized results to the list
+                fpred = fpred + (torch.round(feature_batch).cpu().numpy()).tolist()  # Add layer 7 outputs to the list
                 ytest = ytest + (labels.cpu().numpy()).tolist()
                 images = images + list(inputs.cpu().numpy()[:, 0, :, :])  # Include the one-channel images
-        return np.array(ytest), np.array(hpred), np.array(images)
+        return np.array(ytest), np.array(hpred), np.array(fpred), np.array(images)
 
     def train(self, epochs=50):
         """Train the network"""
@@ -124,7 +169,7 @@ class TuneHash:
                 # Zero the parameter gradients
                 self.optimizer.zero_grad()
                 # Forward + backward + optimize
-                _, outputs = self.model(inputs)
+                _, outputs, _ = self.model(inputs)
                 loss = self.criterion(outputs, labels)
                 loss.backward()
                 self.optimizer.step()
@@ -172,45 +217,36 @@ class TuneHash:
         # Reset all weights
         self.model.apply(weight_reset)
 
-    def imageRetrieval(self, code, labels, query=None, k=10):
-        """Coarse-fine search strategy.
-        . Step 1: Identify a pool of similar candidates using Hamming distance.
-        . Step 2: Identify the top k similar images.
-        @param code: Binary hash codes.
-        @param labels: Ground-truth labels.
-        @param query: Index of the query image.
-        @param k: Desired number of similar images to be retrieved."""
-
-        # Step 1
-        Hq = code[query]
-        P = []
-        for i, Hi in enumerate(code):  # Loop through the entire test set to find the pool P
-            # Verify if the Hamming distance between Hq and Hi is < 5
-            if hamming(Hq.tolist(), Hi.tolist()) < 5:
-                P.append((i, Hi))  # Append the pair index-hash code to the pool
-
-        # Step 2
-        # TODO: Add layer 7 outputs, add Euclidean function, show images
-
 
 if __name__ == '__main__':
 
     # Set input arguments
     dataset = 'MNIST'
     nbits = 48
+    k = 11
 
     # Train MNIST with 48 bits
     hashB = TuneHash(data=dataset, bits=nbits, batch_size=64)
     # hashB.train(epochs=30)  # Uncomment if you want to train the network again
 
     # Get the binary codes of all the images of the test set
-    labls, codes, image = hashB.evaluateBinaryCodes()
+    labls, codes, feature, image = hashB.evaluateBinaryCodes()
 
     # Shuffle the test set with a random seed and select only 1000 images
     indx = [i for i in range(len(codes))]
     np.random.seed(seed=7)
     np.random.shuffle(indx)
-    labls, codes, image = labls[indx][:1000], codes[indx][:1000], image[indx][:1000]
+    labls, codes, feature, image = labls[indx][:1000], codes[indx][:1000], feature[indx][:1000], image[indx][:1000]
 
     # Retrieve images for query "5"
-    hashB.imageRetrieval(code=codes, labels=labls, query=5)
+    indexes = imageRetrieval(code=codes, features=feature, query=3, ki=11)
+    indexes.insert(0, 3)
+
+    # Visualize top-k similar images
+    fig, axs = plt.subplots(3, 4)
+    count = 0
+    for i in range(3):
+        for j in range(4):
+            im = axs[i, j].imshow(image[indexes[count]])
+            axs[i, j].axis('off')
+            count += 1

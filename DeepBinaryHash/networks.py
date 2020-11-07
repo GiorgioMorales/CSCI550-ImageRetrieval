@@ -36,4 +36,4 @@ class AugmentedAlexNet(nn.Module, ABC):
         hashed = self.H(x)
         # Get final result
         result = self.Out(hashed)
-        return hashed, result
+        return hashed, result, x
