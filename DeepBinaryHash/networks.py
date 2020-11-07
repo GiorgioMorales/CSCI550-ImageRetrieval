@@ -1,10 +1,11 @@
 import os
 import torch.nn as nn
 from torchvision import models
+from abc import ABC
 os.environ['TORCH_HOME'] = 'models'
 
 
-class AugmentedAlexNet(nn.Module):
+class AugmentedAlexNet(nn.Module, ABC):
     def __init__(self, bits, classes=10):
         """ Modified AlexNet for learning hash-like binary codes
         @param bits: Desired number of bits of the latent binary code.
