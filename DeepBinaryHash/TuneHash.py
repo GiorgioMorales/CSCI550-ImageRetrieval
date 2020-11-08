@@ -49,7 +49,7 @@ def imageRetrieval(code, features, query=None, ki=10):
     for i, Hi in enumerate(code):  # Loop through the entire test set to find the pool P
         if i != query:
             # Verify if the Hamming distance between Hq and Hi is < 8
-            if hamming(Hq.tolist(), Hi.tolist()) < 8:
+            if hamming(Hq.tolist(), Hi.tolist()) < 10:
                 P.append((i, Hi))  # Append the pair index-hash code to the pool
 
     # Step 2: Calculate the Euclidean distance between Hq and each image of the pool P
@@ -145,7 +145,7 @@ class TuneHash:
                 hpred = hpred + (torch.round(hpredbatch).cpu().numpy()).tolist()  # Add binarized results to the list
                 fpred = fpred + (torch.round(feature_batch).cpu().numpy()).tolist()  # Add layer 7 outputs to the list
                 ytest = ytest + (labels.cpu().numpy()).tolist()
-                images = images + list(inputs.cpu().numpy()[:, 0, :, :])  # Include the one-channel images
+                images = images + list(inputs.cpu().numpy().transpose((0, 2, 3, 1)))  # Include the one-channel images
         return np.array(ytest), np.array(hpred), np.array(fpred), np.array(images)
 
     def train(self, epochs=50):
@@ -221,8 +221,8 @@ class TuneHash:
 if __name__ == '__main__':
 
     # Set input arguments
-    dataset = 'MNIST'
-    nbits = 48
+    dataset = 'CIFAR'
+    nbits = 128
     k = 11
 
     # Train MNIST with 48 bits
@@ -232,15 +232,26 @@ if __name__ == '__main__':
     # Get the binary codes of all the images of the test set
     labls, codes, feature, image = hashB.evaluateBinaryCodes()
 
+    # If the dataset is CIFAR, read the test set again without normalization for better visualization
+    if dataset == 'CIFAR':
+        image = []
+        _, hashB.testloader = readCIFAR(normalization=False)
+        for dat in hashB.testloader:
+            # Get batch
+            inp, lab = dat
+            image = image + list(inp.cpu().numpy().transpose((0, 2, 3, 1)))
+        image = np.array(image)
+
     # Shuffle the test set with a random seed and select only 1000 images
     indx = [i for i in range(len(codes))]
     np.random.seed(seed=7)
     np.random.shuffle(indx)
     labls, codes, feature, image = labls[indx][:1000], codes[indx][:1000], feature[indx][:1000], image[indx][:1000]
 
-    # Retrieve images for query "5"
-    indexes = imageRetrieval(code=codes, features=feature, query=3, ki=11)
-    indexes.insert(0, 3)
+    # Retrieve images for query with index "q"
+    q = 3
+    indexes = imageRetrieval(code=codes, features=feature, query=q, ki=11)
+    indexes.insert(0, q)
 
     # Visualize top-k similar images
     fig, axs = plt.subplots(3, 4)
