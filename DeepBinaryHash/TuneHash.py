@@ -5,6 +5,8 @@ from torchsummary import summary
 import matplotlib.pyplot as plt
 import torch.optim as optim
 import numpy as np
+import pickle
+import os
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -32,38 +34,6 @@ def distance(x1, x2):
         d += (abs(x1[i] - x2[i]) ** 2)
     d = d ** (1 / 2)
     return d
-
-
-def imageRetrieval(code, features, query=None, ki=10):
-    """Coarse-fine search strategy.
-    . Step 1: Identify a pool of similar candidates using Hamming distance.
-    . Step 2: Identify the top k similar images.
-    @param code: Binary hash codes.
-    @param features: Features vectors (outputs of the layer 7, the second fully-connected layer of the network).
-    @param query: Index of the query image.
-    @param ki: Desired number of similar images to be retrieved."""
-
-    # Step 1: Get the pool of candidates
-    Hq = code[query]
-    P = []
-    for i, Hi in enumerate(code):  # Loop through the entire test set to find the pool P
-        if i != query:
-            # Verify if the Hamming distance between Hq and Hi is < 8
-            if hamming(Hq.tolist(), Hi.tolist()) < 10:
-                P.append((i, Hi))  # Append the pair index-hash code to the pool
-
-    # Step 2: Calculate the Euclidean distance between Hq and each image of the pool P
-    Vq = features[query]
-    distances = []
-    for i, Hi in P:
-        if i != query:
-            ViP = features[i]
-            distances.append((i, distance(Vq, ViP)))  # Append the pair index-distance to the list
-    # Sort the list based on the distances
-    distances.sort(key=lambda x: x[1])
-
-    # Select the indexes of the top k-images
-    return [i for i, _ in distances][:ki]
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -120,8 +90,10 @@ class TuneHash:
                 ytest = ytest + (labels.cpu().numpy()).tolist()
         return ytest, ypred
 
-    def evaluateBinaryCodes(self):
-        """Return the numpy target and predicted hash-like binary codes."""
+    def evaluateBinaryCodes(self, mode='test'):
+        """Return the numpy target and predicted hash-like binary codes.
+        @param mode: String indicating which data loader will be used. Options: 'train' or 'test'
+        """
         torch.manual_seed(7)
         torch.cuda.manual_seed(7)
         torch.backends.cudnn.deterministic = True
@@ -132,10 +104,17 @@ class TuneHash:
         hpred = []
         fpred = []
         ytest = []
-        images = []
+
+        # Depending on the selected mode, use the trainloader or the testloader
+        if mode == 'train':
+            loader = self.trainloader
+        else:
+            loader = self.testloader
+
         with torch.no_grad():
             self.model.eval()
-            for b, data in enumerate(self.testloader, 0):
+            counter = 0
+            for b, data in enumerate(loader, 0):
                 # Get batch
                 inputs, labels = data
                 inputs, labels = inputs.to(self.device), labels.long().to(self.device)
@@ -145,8 +124,14 @@ class TuneHash:
                 hpred = hpred + (torch.round(hpredbatch).cpu().numpy()).tolist()  # Add binarized results to the list
                 fpred = fpred + (torch.round(feature_batch).cpu().numpy()).tolist()  # Add layer 7 outputs to the list
                 ytest = ytest + (labels.cpu().numpy()).tolist()
-                images = images + list(inputs.cpu().numpy().transpose((0, 2, 3, 1)))  # Include the one-channel images
-        return np.array(ytest), np.array(hpred), np.array(fpred), np.array(images)
+                # Denormalize data
+                # inputs = deNormalize(inputs, self.data)
+                # images = images + list(inputs.cpu().numpy().transpose((0, 2, 3, 1)))  # Include the one-channel images
+                counter += len(inputs)
+                # If mode='test', stop after 1000 samples
+                if mode == 'test' and counter >= 1000:
+                    break
+        return np.array(ytest), np.array(hpred), np.array(fpred)
 
     def train(self, epochs=50):
         """Train the network"""
@@ -217,47 +202,154 @@ class TuneHash:
         # Reset all weights
         self.model.apply(weight_reset)
 
+    def imageRetrieval(self, Hq, Vq, codes, features, ki=10):
+        """Coarse-fine search strategy.
+        . Step 1: Identify a pool of similar candidates using Hamming distance.
+        . Step 2: Identify the top k similar images.
+        @param Hq: Binary hash code of the query image.
+        @param Vq: Feature vector of th query image (outputs of the the 2nd fully-connected layer of the network).
+        @param codes: Binary hash codes of the images in the training set.
+        @param features: Features vectors (outputs of the layer 7, the second fully-connected layer of the network).
+        @param ki: Desired number of similar images to be retrieved."""
+
+        # Adapt threshold depending on the number of bits
+        if self.bits == 48:
+            threshold = 10
+        else:
+            threshold = 30
+
+        # Step 1: Get the pool of candidates
+        P = []
+        for i, Hi in enumerate(codes):  # Loop through the entire training set to find the pool P
+            # Verify if the Hamming distance between Hq and Hi is < 8
+            if hamming(Hq.tolist(), Hi.tolist()) < threshold:
+                P.append((i, Hi))  # Append the pair index-hash code to the pool
+
+        # Step 2: Calculate the Euclidean distance between Hq and each image of the pool P
+        distances = []
+        for i, Hi in P:
+            ViP = features[i]
+            distances.append((i, distance(Vq, ViP)))  # Append the pair index-distance to the list
+        # Sort the list based on the distances
+        distances.sort(key=lambda x: x[1])
+
+        # Select the indexes of the top k-images
+        return [i for i, _ in distances][:ki]
+
+    def getCodeFeatures(self):
+        # Compute the binary codes of the first 1000 images of the test set (Query images)
+        # Check if they were previously computed (saved); otherwise, compute and save the codes and features
+        pathCode = "hashCodes//Query-binaryCode-" + self.data + "-" + str(self.bits) + "bits"
+        pathFeat = "hashCodes//Query-features-" + self.data + "-" + str(self.bits) + "bits"
+        pathLabl = "hashCodes//Query-labels-" + self.data + "-" + str(self.bits) + "bits"
+        if os.path.exists(pathCode):
+            with open(pathCode, 'rb') as f:
+                codes_test = pickle.load(f)
+            with open(pathFeat, 'rb') as f:
+                features_test = pickle.load(f)
+            with open(pathLabl, 'rb') as f:
+                labels_test = pickle.load(f)
+        else:
+            labels_test, codes_test, features_test = hashB.evaluateBinaryCodes(mode='test')
+            with open(pathCode, 'wb') as f:
+                pickle.dump(codes_test, f)
+            with open(pathFeat, 'wb') as f:
+                pickle.dump(features_test, f)
+            with open(pathLabl, 'wb') as f:
+                pickle.dump(labels_test, f)
+
+        # Get the binary codes of all the images of the training set
+        # Check if they were previously computed (saved); otherwise, compute and save the codes and features
+        pathCode = "hashCodes//Training-binaryCode-" + dataset + "-" + str(nbits) + "bits"
+        pathFeat = "hashCodes//Training-features-" + dataset + "-" + str(nbits) + "bits"
+        pathLabl = "hashCodes//Training-labels-" + dataset + "-" + str(nbits) + "bits"
+        if os.path.exists(pathCode):
+            with open(pathCode, 'rb') as f:
+                codes_train = pickle.load(f)
+            with open(pathFeat, 'rb') as f:
+                features_train = pickle.load(f)
+            with open(pathLabl, 'rb') as f:
+                labels_train = pickle.load(f)
+        else:
+            labels_train, codes_train, features_train = hashB.evaluateBinaryCodes(mode='train')
+            with open(pathCode, 'wb') as f:
+                pickle.dump(codes_train, f)
+            with open(pathFeat, 'wb') as f:
+                pickle.dump(features_train, f)
+            with open(pathLabl, 'wb') as f:
+                pickle.dump(labels_train, f)
+        return codes_test, features_test, labels_test, codes_train, features_train, labels_train
+
+    def calculatePrecision(self):
+        codes_test, features_test, labels_test, codes_train, features_train, labels_train = self.getCodeFeatures()
+        # Experiment using various k values
+        PrecisionMeanStd = np.zeros(
+            (401, 2))  # Used to store the mean and std of the precision obtained for each k value
+        for n, k in enumerate(range(100, 501)):
+            Prec = []
+            # Retrieve indexes of top-k similar images for each query image
+            for queryCode, queryFeature, queryLabel in zip(codes_test, features_test, labels_test):
+                indexes = hashB.imageRetrieval(Hq=queryCode, Vq=queryFeature, codes=codes_train,
+                                               features=features_train, ki=k)
+                # Calculate precision: Prec = (\sum_i^k Rel(i)) / k
+                sumP = 0
+                r = 0
+                for r in range(k):
+                    # Check ground-truth relevance between the query and the r-th ranked image
+                    if r > len(indexes):
+                        sumP = sumP + (queryLabel == labels_train[indexes[r]])
+                    else:
+                        break
+                # Append precision result for the query image
+                Prec.append(sumP / (r + 1))
+
+            # Store mean and std deviation of the precision metric
+            PrecisionMeanStd[n, 0] = np.mean(Prec)
+            PrecisionMeanStd[n, 1] = np.std(Prec)
+
+        # Save results
+        pathResult = "hashCodes//PrecisionResults-" + dataset + "-" + str(nbits) + "bits"
+        with open(pathResult, 'wb') as fi:
+            pickle.dump(codes_train, fi)
+
+    def printQuery(self, q=7):
+        """Print a query image from the test set and the 11 most similar images from the training set"""
+        codes_test, features_test, labels_test, codes_train, features_train, labels_train = self.getCodeFeatures()
+        indexes = hashB.imageRetrieval(Hq=codes_test[q], Vq=features_test[q], codes=codes_train,
+                                       features=features_train, ki=11)
+        indexes.insert(0, q)
+        # Find the actual query image
+        counter = 0
+        image = []
+        for b, data in enumerate(self.testloader, 0):
+            # Get batch
+            inputs, _ = data
+            # Denormalize data
+            inputs = deNormalize(inputs, self.data)
+            inputs = list(inputs.numpy().transpose((0, 2, 3, 1)))
+            for im in inputs:
+                if counter == q:
+                    image.append(im)
+                counter += len(inputs)
+        # Visualize top-k similar images
+        fig, axs = plt.subplots(3, 4)
+        count = 0
+        for i in range(3):
+            for j in range(4):
+                im = axs[i, j].imshow(image[indexes[count]])
+                axs[i, j].axis('off')
+                count += 1
+
 
 if __name__ == '__main__':
 
     # Set input arguments
     dataset = 'CIFAR'
     nbits = 128
-    k = 11
 
-    # Train MNIST with 48 bits
-    hashB = TuneHash(data=dataset, bits=nbits, batch_size=64)
-    # hashB.train(epochs=30)  # Uncomment if you want to train the network again
+    # Initialize network to encode the dataset with nbits bits
+    hashB = TuneHash(data=dataset, bits=nbits, batch_size=50)
+    # hashB.train(epochs=100)  # Uncomment if you want to train the network again. Use batch_size=64 for training
 
-    # Get the binary codes of all the images of the test set
-    labls, codes, feature, image = hashB.evaluateBinaryCodes()
-
-    # If the dataset is CIFAR, read the test set again without normalization for better visualization
-    if dataset == 'CIFAR':
-        image = []
-        _, hashB.testloader = readCIFAR(normalization=False)
-        for dat in hashB.testloader:
-            # Get batch
-            inp, lab = dat
-            image = image + list(inp.cpu().numpy().transpose((0, 2, 3, 1)))
-        image = np.array(image)
-
-    # Shuffle the test set with a random seed and select only 1000 images
-    indx = [i for i in range(len(codes))]
-    np.random.seed(seed=7)
-    np.random.shuffle(indx)
-    labls, codes, feature, image = labls[indx][:1000], codes[indx][:1000], feature[indx][:1000], image[indx][:1000]
-
-    # Retrieve images for query with index "q"
-    q = 3
-    indexes = imageRetrieval(code=codes, features=feature, query=q, ki=11)
-    indexes.insert(0, q)
-
-    # Visualize top-k similar images
-    fig, axs = plt.subplots(3, 4)
-    count = 0
-    for i in range(3):
-        for j in range(4):
-            im = axs[i, j].imshow(image[indexes[count]])
-            axs[i, j].axis('off')
-            count += 1
+    # Get metrics
+    hashB.calculatePrecision()
