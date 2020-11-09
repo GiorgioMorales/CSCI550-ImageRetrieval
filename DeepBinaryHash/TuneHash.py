@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch.optim as optim
 import numpy as np
 import pickle
+import time
 import os
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -44,7 +45,7 @@ def distance(x1, x2):
 
 
 class TuneHash:
-    def __init__(self, data='MNIST', bits=128, batch_size=128):
+    def __init__(self, data='MNIST', bits=128, batch_size=128, shuffle=True):
         """Tune the AlexNet to get the hash-like binary codes
         @param data: Name of the dataset that will be used. Options: 'MNIST' or 'CIFAR' (so far)
         """
@@ -53,10 +54,10 @@ class TuneHash:
         self.batch_size = batch_size
         # Load data
         if self.data == 'MNIST':
-            self.trainloader, self.testloader = readMNIST(batch_size=batch_size)
+            self.trainloader, self.testloader = readMNIST(batch_size=batch_size, trainShuffle=shuffle)
             self.classes = 10
         else:
-            self.trainloader, self.testloader = readCIFAR(batch_size=batch_size)
+            self.trainloader, self.testloader = readCIFAR(batch_size=batch_size, trainShuffle=shuffle)
             self.classes = 10
 
         # Initialize pre-trained augmented model
@@ -202,7 +203,7 @@ class TuneHash:
         # Reset all weights
         self.model.apply(weight_reset)
 
-    def imageRetrieval(self, Hq, Vq, codes, features, ki=10):
+    def imageRetrieval(self, Hq, Vq, codes, features):
         """Coarse-fine search strategy.
         . Step 1: Identify a pool of similar candidates using Hamming distance.
         . Step 2: Identify the top k similar images.
@@ -210,7 +211,7 @@ class TuneHash:
         @param Vq: Feature vector of th query image (outputs of the the 2nd fully-connected layer of the network).
         @param codes: Binary hash codes of the images in the training set.
         @param features: Features vectors (outputs of the layer 7, the second fully-connected layer of the network).
-        @param ki: Desired number of similar images to be retrieved."""
+        """
 
         # Adapt threshold depending on the number of bits
         if self.bits == 48:
@@ -219,22 +220,27 @@ class TuneHash:
             threshold = 30
 
         # Step 1: Get the pool of candidates
-        P = []
+        Pindex = []
+        tic = time.perf_counter()
         for i, Hi in enumerate(codes):  # Loop through the entire training set to find the pool P
             # Verify if the Hamming distance between Hq and Hi is < 8
             if hamming(Hq.tolist(), Hi.tolist()) < threshold:
-                P.append((i, Hi))  # Append the pair index-hash code to the pool
+                Pindex.append(i)  # Append the index to the pool
 
+        toc = time.perf_counter()
+        print(f"Step 1 in {toc - tic:0.4f} seconds")
         # Step 2: Calculate the Euclidean distance between Hq and each image of the pool P
-        distances = []
-        for i, Hi in P:
-            ViP = features[i]
-            distances.append((i, distance(Vq, ViP)))  # Append the pair index-distance to the list
+        tic = time.perf_counter()
+        VP = features[Pindex]
+        distances = np.linalg.norm(Vq - VP, axis=1)  # Calculate Euclidean distances
         # Sort the list based on the distances
+        distances = list(tuple(zip(Pindex, distances)))
         distances.sort(key=lambda x: x[1])
+        toc = time.perf_counter()
+        print(f"Step 2 in {toc - tic:0.4f} seconds")
 
         # Select the indexes of the top k-images
-        return [i for i, _ in distances][:ki]
+        return [i for i, _ in distances]
 
     def getCodeFeatures(self):
         # Compute the binary codes of the first 1000 images of the test set (Query images)
@@ -283,44 +289,57 @@ class TuneHash:
     def calculatePrecision(self):
         codes_test, features_test, labels_test, codes_train, features_train, labels_train = self.getCodeFeatures()
         # Experiment using various k values
-        PrecisionMeanStd = np.zeros(
-            (401, 2))  # Used to store the mean and std of the precision obtained for each k value
-        for n, k in enumerate(range(100, 501)):
-            Prec = []
-            # Retrieve indexes of top-k similar images for each query image
-            for queryCode, queryFeature, queryLabel in zip(codes_test, features_test, labels_test):
-                indexes = hashB.imageRetrieval(Hq=queryCode, Vq=queryFeature, codes=codes_train,
-                                               features=features_train, ki=k)
+        kmax = 500
+        kmin = 100
+        PrecisionMeanStd = np.zeros((kmax - kmin + 1, 2))  # Used to store the mean and std of the precision for each k
+        PrecisionQuery = np.zeros((len(codes_test), kmax - kmin + 1))
+
+        qcount = 0
+        # Retrieve indexes of the similar images for each query image in descending order
+        for queryCode, queryFeature, queryLabel in zip(codes_test, features_test, labels_test):
+            print("Analyzing " + str(qcount))
+            tic = time.perf_counter()
+            indexes = hashB.imageRetrieval(Hq=queryCode, Vq=queryFeature, codes=codes_train,
+                                           features=features_train)
+            toc = time.perf_counter()
+            print(f"Searched in {toc - tic:0.4f} seconds")
+
+            # Calculate precision using different values of k
+            for k in range(kmin, kmax + 1):
                 # Calculate precision: Prec = (\sum_i^k Rel(i)) / k
                 sumP = 0
                 r = 0
                 for r in range(k):
                     # Check ground-truth relevance between the query and the r-th ranked image
-                    if r > len(indexes):
+                    if r < len(indexes):
                         sumP = sumP + (queryLabel == labels_train[indexes[r]])
                     else:
                         break
                 # Append precision result for the query image
-                Prec.append(sumP / (r + 1))
+                PrecisionQuery[qcount, k - kmin] = sumP / (r + 1)
 
-            # Store mean and std deviation of the precision metric
-            PrecisionMeanStd[n, 0] = np.mean(Prec)
-            PrecisionMeanStd[n, 1] = np.std(Prec)
+            qcount += 1
+
+        # Store mean and std deviation of the precision metric
+        PrecisionMeanStd[:, 0] = np.mean(PrecisionQuery, axis=0)
+        PrecisionMeanStd[:, 1] = np.std(PrecisionQuery, axis=0)
 
         # Save results
         pathResult = "hashCodes//PrecisionResults-" + dataset + "-" + str(nbits) + "bits"
         with open(pathResult, 'wb') as fi:
-            pickle.dump(codes_train, fi)
+            pickle.dump(PrecisionMeanStd, fi)
+
+        return PrecisionMeanStd
 
     def printQuery(self, q=7):
         """Print a query image from the test set and the 11 most similar images from the training set"""
         codes_test, features_test, labels_test, codes_train, features_train, labels_train = self.getCodeFeatures()
         indexes = hashB.imageRetrieval(Hq=codes_test[q], Vq=features_test[q], codes=codes_train,
-                                       features=features_train, ki=11)
-        indexes.insert(0, q)
+                                       features=features_train)[:11]
         # Find the actual query image
         counter = 0
-        image = []
+        image = np.zeros((len(indexes) + 1, 227, 227, 3))
+        flag = False
         for b, data in enumerate(self.testloader, 0):
             # Get batch
             inputs, _ = data
@@ -329,27 +348,55 @@ class TuneHash:
             inputs = list(inputs.numpy().transpose((0, 2, 3, 1)))
             for im in inputs:
                 if counter == q:
-                    image.append(im)
-                counter += len(inputs)
+                    image[0, :, :, :] = im
+                    flag = True
+                    break
+                counter += 1
+            if flag:
+                break
+
+        # Find the actual selected images
+        counter = 0
+        flag = False
+        for b, data in enumerate(self.trainloader, 0):
+            # Get batch
+            inputs, _ = data
+            # Denormalize data
+            inputs = deNormalize(inputs, self.data)
+            inputs = list(inputs.numpy().transpose((0, 2, 3, 1)))
+            for im in inputs:
+                if counter in indexes:  # Check if the current image is in the desired list of similar images
+                    image[np.where(np.array(indexes) == counter)[0][0] + 1, :, :, :] = im
+                # If all the images have been found, stop searching
+                if counter == sorted(indexes)[-1]:
+                    flag = True
+                    break
+                counter += 1
+            if flag:
+                break
+
         # Visualize top-k similar images
         fig, axs = plt.subplots(3, 4)
         count = 0
         for i in range(3):
             for j in range(4):
-                im = axs[i, j].imshow(image[indexes[count]])
+                axs[i, j].imshow(image[count, :])
                 axs[i, j].axis('off')
                 count += 1
 
 
 if __name__ == '__main__':
-
     # Set input arguments
     dataset = 'CIFAR'
     nbits = 128
 
     # Initialize network to encode the dataset with nbits bits
-    hashB = TuneHash(data=dataset, bits=nbits, batch_size=50)
+    hashB = TuneHash(data=dataset, bits=nbits, batch_size=50, shuffle=False)
     # hashB.train(epochs=100)  # Uncomment if you want to train the network again. Use batch_size=64 for training
 
     # Get metrics
-    hashB.calculatePrecision()
+    # results = hashB.calculatePrecision()
+
+    hashB.printQuery(q=0)
+    hashB.printQuery(q=10)
+    hashB.printQuery(q=30)
