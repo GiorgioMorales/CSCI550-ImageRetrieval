@@ -388,7 +388,7 @@ class TuneHash:
 if __name__ == '__main__':
     # Set input arguments
     dataset = 'CIFAR'
-    nbits = 128
+    nbits = 48
 
     # Initialize network to encode the dataset with nbits bits
     hashB = TuneHash(data=dataset, bits=nbits, batch_size=50, shuffle=False)
@@ -397,6 +397,6 @@ if __name__ == '__main__':
     # Get metrics
     # results = hashB.calculatePrecision()
 
-    hashB.printQuery(q=0)
-    hashB.printQuery(q=10)
-    hashB.printQuery(q=30)
+    hashB.printQuery(q=40)
+    hashB.printQuery(q=50)
+    hashB.printQuery(q=60)
