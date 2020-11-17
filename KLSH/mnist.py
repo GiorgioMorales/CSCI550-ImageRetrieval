@@ -4,6 +4,7 @@ import urllib.request
 import gzip
 import shutil
 import struct
+import numpy as np
 
 MNIST_DIR = "data/mnist"
 TRAIN_FILE = MNIST_DIR + "/train"
@@ -34,7 +35,7 @@ def read_file(filepath):
         for _ in range(num_images):
             length = rows * cols
             vals = struct.unpack("B" * length, fin.read(length))
-            data.append([float(v) for v in vals])
+            data.append(np.asarray([float(v) for v in vals]))
 
     return data
 

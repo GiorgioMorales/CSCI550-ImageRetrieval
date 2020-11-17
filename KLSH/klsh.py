@@ -12,6 +12,7 @@ HASHES_FILE = HASHES_DIR + "/{}_{}_{}_{}_{}_{}.csv"
 class KLSH():
     def __init__(self, numBits, kernel, datasetName, subsetSize=None, sampleSize=None, randomSeed=0):
         self.numBits = numBits
+        self.kernelName = kernel
         self.kernel = lambda X, Y: pairwise_kernels(X, Y, metric=kernel)
         self.datasetName = datasetName
         self.subsetSize = subsetSize
@@ -28,20 +29,20 @@ class KLSH():
         hashFile = HASHES_FILE.format(
             self.datasetName,
             self.numBits,
-            self.kernel,
+            self.kernelName,
             self.subsetSize,
             self.sampleSize,
             self.randomSeed)
         self.buckets = {}
 
+        # Get the hash functions
+        print("Generating hash function...")
+        self.hashFunctions = [self._genHashFunction(dataset) for _ in range(self.numBits)]
+
         # Rehash the dataset if no file exists
         if not os.path.isfile(hashFile):
-            print("MNIST hashes file not found. Rehashing dataset. This may take some time...")
-            
-            # Get the hash functions
-            print("\tGenerating hash function...")
-            self.hashFunctions = [self._genHashFunction(dataset) for _ in range(self.numBits)]
-        
+            print(self.datasetName + " hashes file not found. Rehashing dataset. This may take some time...")
+    
             # Hash each element in dataset
             last_pct = -0.01
             print("\tHashing elements in training set")
@@ -54,17 +55,22 @@ class KLSH():
             
                     if idx / len(dataset) >= 0.01 + last_pct:
                         last_pct += 0.01
-                        print("\t{}% done...".format(last_pct * 100.0))
-                    fout.write("{},{}".format(idx, h))
+                        print("\t{0:.1f}% done...".format(last_pct * 100.0))
+                    fout.write("{},{}\n".format(idx, h))
 
         # We have a hash file; don't rehash
         else:
+            hashset = set()
             with open(hashFile, 'r') as fin:
                 for line in fin:
                     [idx, h] = [int(x) for x in line.split(",")]
+                    hashset.add(h)
                     if h not in self.buckets:
                         self.buckets[h] = []
                     self.buckets[h].append(dataset[idx])
+            bucketSizes = [len(arr) for arr in self.buckets.values()]
+            print("Greatest bucket: ", max(bucketSizes))
+            print("Smallest bucket: ", min(bucketSizes))
 
     # Hashes a given data point
     def hash(self, x):
@@ -107,7 +113,7 @@ class KLSH():
         lambdas, U = np.linalg.eigh(K)
         lambdas = [0 if eigenval < 0 or math.isclose(eigenval, 0.0, abs_tol=1e-12) else eigenval ** -0.5 for eigenval in lambdas]
         rootTheta = np.diag(lambdas)
-        negRootK = U.dot(rootTheta).dot(np.linalg.inv(U))
+        negRootK = U.dot(rootTheta).dot(U.T)
             
         # Get the indices of the random subset (s)
         sIndices = list(range(sampleSize))
