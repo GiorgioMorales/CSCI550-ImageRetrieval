@@ -1,30 +1,70 @@
 import sys
+import os
 import random
 import math
 
 import numpy as np
 from sklearn.metrics.pairwise import pairwise_kernels
 
+HASHES_DIR = "hashes"
+HASHES_FILE = HASHES_DIR + "/{}_{}_{}_{}_{}_{}.csv"
+
 class KLSH():
-    def __init__(self, numBits, kernel, subsetSize=None, sampleSize=None, randomSeed=0):
+    def __init__(self, numBits, kernel, datasetName, subsetSize=None, sampleSize=None, randomSeed=0):
         self.numBits = numBits
-        self.kernel = kernel
+        self.kernel = lambda X, Y: pairwise_kernels(X, Y, metric=kernel)
+        self.datasetName = datasetName
         self.subsetSize = subsetSize
         self.sampleSize = sampleSize
         self.rng = random.Random(randomSeed)
+        self.randomSeed = randomSeed
 
     # Note: Assumes that each row in dataset is already an embedding
     def fit(self, dataset):
-        # Get the hash functions
-        self.hashFunctions = [self._genHashFunction(dataset) for _ in range(self.numBits)]
-
-        # Hash each element in dataset
+        # Create the hashes directory if it doesn't exist
+        if not os.path.isdir(HASHES_DIR):
+            os.makedirs(HASHES_DIR)
+            
+        hashFile = HASHES_FILE.format(
+            self.datasetName,
+            self.numBits,
+            self.kernel,
+            self.subsetSize,
+            self.sampleSize,
+            self.randomSeed)
         self.buckets = {}
-        for d in dataset:
-            h = self.hash(d)
-            if h not in self.buckets:
-                self.buckets[h] = []
-            self.buckets[h].append(d)
+
+        # Rehash the dataset if no file exists
+        if not os.path.isfile(hashFile):
+            print("MNIST hashes file not found. Rehashing dataset. This may take some time...")
+            
+            # Get the hash functions
+            print("\tGenerating hash function...")
+            self.hashFunctions = [self._genHashFunction(dataset) for _ in range(self.numBits)]
+        
+            # Hash each element in dataset
+            last_pct = -0.01
+            print("\tHashing elements in training set")
+            with open(hashFile, 'w') as fout:
+                for (idx, d) in enumerate(dataset):
+                    h = self.hash(d)
+                    if h not in self.buckets:
+                        self.buckets[h] = []
+                    self.buckets[h].append(d)
+            
+                    if idx / len(dataset) >= 0.01 + last_pct:
+                        last_pct += 0.01
+                        print("\t{}% done...".format(last_pct * 100.0))
+                    fout.write("{},{}".format(idx, h))
+
+        # We have a hash file; don't rehash
+        else:
+            with open(hashFile, 'r') as fin:
+                for line in fin:
+                    [idx, h] = [int(x) for x in line.split(",")]
+                    if h not in self.buckets:
+                        self.buckets[h] = []
+                    self.buckets[h].append(dataset[idx])
 
     # Hashes a given data point
     def hash(self, x):
@@ -94,24 +134,3 @@ class KLSH():
                 return 0
 
         return hashFunction
-
-if __name__ == "__main__":
-    pointLength = 10
-    trainLength = 10000
-    testLength = 10
-    
-    # Generate random vectors to test the system
-    rng = random.Random(0)
-    train = [[rng.uniform(-1.0, 1.0) for _ in range(pointLength)] for _ in range(trainLength)]
-    test = [[rng.uniform(-1.0, 1.0) for _ in range(pointLength)] for _ in range(testLength)]
-    train = np.asarray(train)
-    test = np.asarray(test)
-
-    # Fit the data
-    klsh = KLSH(16, lambda X, Y: pairwise_kernels(X, Y, metric='linear'), sampleSize=300, subsetSize=30)
-    klsh.fit(train)
-    
-    # Test the data by printing cos sim with the nns
-    for t in test:
-        nns = klsh.nearest_neighbors(t)
-        print([n.dot(t) / (np.linalg.norm(t) * np.linalg.norm(n)) for n in nns])
