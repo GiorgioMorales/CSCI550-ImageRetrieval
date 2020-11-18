@@ -2,6 +2,7 @@ import sys
 import os
 import random
 import math
+import itertools
 
 import numpy as np
 from sklearn.metrics.pairwise import pairwise_kernels
@@ -68,8 +69,6 @@ class KLSH():
                         self.buckets[h] = []
                     self.buckets[h].append(dataset[idx])
             bucketSizes = [len(arr) for arr in self.buckets.values()]
-            print("Greatest bucket: ", max(bucketSizes))
-            print("Smallest bucket: ", min(bucketSizes))
 
     # Hashes a given data point
     def hash(self, x):
@@ -84,12 +83,37 @@ class KLSH():
         #print(finalHash)
         return finalHash
 
-    def nearest_neighbors(self, x, numNeighbors):
+    # Gets the nearest neighbors
+    def nearestNeighbors(self, x, numNeighbors):
+        # Get the hash for the object
         h = self.hash(x)
+
+        # Get neighbors as long as we have fewer than numNeighbors
+        neighbors = []
         if h in self.buckets:
-            return self.buckets[h][:numNeighbors]
-        else:
-            return []
+            neighbors += self.buckets[h]
+            
+        numDiff = 1
+        while len(neighbors) < numNeighbors:
+            # Flip the bits at the positions in bits
+            for bits in itertools.combinations(range(self.numBits), numDiff):
+                newHash = h
+                for b in bits:
+                    mask = 1 << b
+                    newHash ^= mask
+                    
+                # Add the items at the hash bucket into the neighbor list
+                if newHash in self.buckets:
+                    neighbors += self.buckets[newHash]
+                    
+            numDiff += 1
+
+        # Identify top matches using cosine similarity
+        scores = [x.dot(n) / (np.linalg.norm(x) * np.linalg.norm(n)) for n in neighbors]
+        matchList = list(zip(scores, neighbors))
+        matchList = sorted(matchList, key=lambda m: -m[0])
+        matchList = [n for (_, n) in matchList]
+        return matchList[:numNeighbors]
         
     def _genHashFunction(self, dataset):
         # Determine the sample size (p) and the subset size (t)

@@ -37,7 +37,9 @@ if __name__ == "__main__":
     klsh.fit(train)
     
     # Test the data by printing cos sim with the nns
-    t = test[int(sys.argv[3])]
-    nns = klsh.nearest_neighbors(t, 11)
-    nns = [t] + nns
-    displayImages(nns, shape)
+    testIndices = sys.argv[3:]
+    for t in testIndices:
+        tImg = test[int(t)]
+        nns = klsh.nearestNeighbors(tImg, 11)
+        nns = [tImg] + nns
+        displayImages(nns, shape)
