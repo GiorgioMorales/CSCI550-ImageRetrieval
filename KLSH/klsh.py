@@ -79,7 +79,6 @@ class KLSH():
         for b in bits:
             finalHash <<= 1
             finalHash |= b
-        #print(finalHash)
         return finalHash
 
     # Gets the nearest neighbors
@@ -87,26 +86,28 @@ class KLSH():
         # Get the hash for the object
         h = self.hash(x)
 
-        # Get neighbors as long as we have fewer than numNeighbors
-        neighbors = []
-        if h in self.buckets:
-            neighbors += self.buckets[h]
-            
-        numDiff = 1
-        while len(neighbors) < numNeighbors:
-            # Flip the bits at the positions in bits
-            for bits in itertools.combinations(range(self.numBits), numDiff):
-                newHash = h
-                for b in bits:
-                    mask = 1 << b
-                    newHash ^= mask
-                    
-                # Add the items at the hash bucket into the neighbor list
-                if newHash in self.buckets:
-                    neighbors += self.buckets[newHash]
-                    
-            numDiff += 1
+        distances = []
+        for hashCode in self.buckets:
+            # Calculate Hamming distance
+            d = 0
+            for i in range(self.numBits):
+                mask = 1 << i
+                if (h & mask) != (hashCode & mask):
+                    d += 1
 
+            # Insert hash into hamming distance storage
+            while d >= len(distances):
+                distances.append([])
+            distances[d].append(hashCode)
+
+        # Grab neighbors from buckets with increasing hamming distance
+        neighbors = []
+        distance = 0
+        while len(neighbors) < numNeighbors:
+            for hashCode in distances[distance]:
+                neighbors += self.buckets[hashCode]
+            distance += 1
+        
         # Identify top matches using cosine similarity
         scores = [x.dot(n) / (np.linalg.norm(x) * np.linalg.norm(n)) for (n, _) in neighbors]
         matchList = list(zip(scores, neighbors))
