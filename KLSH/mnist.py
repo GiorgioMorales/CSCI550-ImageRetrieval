@@ -35,7 +35,7 @@ def read_file(filepath):
         for _ in range(num_images):
             length = rows * cols
             vals = struct.unpack("B" * length, fin.read(length))
-            data.append(np.asarray([float(v) for v in vals]))
+            data.append(np.array([float(v) for v in vals]))
 
     return data
 

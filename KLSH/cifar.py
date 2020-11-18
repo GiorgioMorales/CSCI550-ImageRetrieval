@@ -19,7 +19,15 @@ def read_file(filepath):
     data = []
     with open(filepath, 'rb') as fin:
         d = pickle.load(fin, encoding='bytes')
-        data = [row.astype(float) for row in d[b'data']]
+        for row in d[b'data']:
+            finalRow = []
+            for i in range(1024):
+                finalRow.append(row[i])        # Red
+                finalRow.append(row[1024 + i]) # Green
+                finalRow.append(row[2048 + i]) # Blue
+            
+            finalRow = np.array(finalRow).astype(float)
+            data.append(finalRow)
     return data
 
 # Get the train and test data from the CIFAR dataset

@@ -45,7 +45,6 @@ class KLSH():
     
             # Hash each element in dataset
             last_pct = -0.01
-            print("\tHashing elements in training set")
             with open(hashFile, 'w') as fout:
                 for (idx, d) in enumerate(dataset):
                     h = self.hash(d)
@@ -85,10 +84,10 @@ class KLSH():
         #print(finalHash)
         return finalHash
 
-    def nearest_neighbors(self, x):
+    def nearest_neighbors(self, x, numNeighbors):
         h = self.hash(x)
         if h in self.buckets:
-            return self.buckets[h]
+            return self.buckets[h][:numNeighbors]
         else:
             return []
         
