@@ -17,6 +17,7 @@ TEST_FILE = CIFAR_DIR + "/test_batch"
 def read_file(filepath):
     # Read in the CIFAR file
     data = []
+    labels = []
     with open(filepath, 'rb') as fin:
         d = pickle.load(fin, encoding='bytes')
         for row in d[b'data']:
@@ -28,14 +29,15 @@ def read_file(filepath):
             
             finalRow = np.array(finalRow).astype(float)
             data.append(finalRow)
-    return data
+        labels = d[b'labels']
+    return (data, labels)
 
 # Get the train and test data from the CIFAR dataset
 def read_CIFAR_dataset():
     # Create data path, if necessary
     if not os.path.isdir(CIFAR_DIR):
         print("Downloading CIFAR data files...")
-        os.makedirs(DATA_DIR)
+        os.makedirs(DATA_DIR, exist_ok=True)
 
         # Decompress file
         handle = urllib.request.urlopen(DATA_URL)
@@ -51,9 +53,11 @@ def read_CIFAR_dataset():
     # Read in the CIFAR files
     print("Reading CIFAR training files...")
     trains = [read_file(f) for f in TRAIN_FILES]
+    (trains, train_labels) = zip(*trains)
     train = list(itertools.chain.from_iterable(trains))
+    train_labels = list(itertools.chain.from_iterable(train_labels))
     
     print("Reading CIFAR testing file...")
-    test = read_file(TEST_FILE)
+    (test, test_labels) = read_file(TEST_FILE)
 
-    return (train, test)
+    return (train, train_labels, test, test_labels)

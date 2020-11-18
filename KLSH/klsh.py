@@ -22,7 +22,7 @@ class KLSH():
         self.randomSeed = randomSeed
 
     # Note: Assumes that each row in dataset is already an embedding
-    def fit(self, dataset):
+    def fit(self, dataset, labels):
         # Create the hashes directory if it doesn't exist
         if not os.path.isdir(HASHES_DIR):
             os.makedirs(HASHES_DIR)
@@ -47,11 +47,11 @@ class KLSH():
             # Hash each element in dataset
             last_pct = -0.01
             with open(hashFile, 'w') as fout:
-                for (idx, d) in enumerate(dataset):
+                for (idx, (d, l)) in enumerate(zip(dataset, labels)):
                     h = self.hash(d)
                     if h not in self.buckets:
                         self.buckets[h] = []
-                    self.buckets[h].append(d)
+                    self.buckets[h].append((d, l))
             
                     if idx / len(dataset) >= 0.01 + last_pct:
                         last_pct += 0.01
@@ -67,8 +67,7 @@ class KLSH():
                     hashset.add(h)
                     if h not in self.buckets:
                         self.buckets[h] = []
-                    self.buckets[h].append(dataset[idx])
-            bucketSizes = [len(arr) for arr in self.buckets.values()]
+                    self.buckets[h].append((dataset[idx], labels[idx]))
 
     # Hashes a given data point
     def hash(self, x):
@@ -109,7 +108,7 @@ class KLSH():
             numDiff += 1
 
         # Identify top matches using cosine similarity
-        scores = [x.dot(n) / (np.linalg.norm(x) * np.linalg.norm(n)) for n in neighbors]
+        scores = [x.dot(n) / (np.linalg.norm(x) * np.linalg.norm(n)) for (n, _) in neighbors]
         matchList = list(zip(scores, neighbors))
         matchList = sorted(matchList, key=lambda m: -m[0])
         matchList = [n for (_, n) in matchList]

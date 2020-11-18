@@ -26,20 +26,21 @@ def displayImages(images, shape, cols=3, rows=4):
 
 if __name__ == "__main__":
     if sys.argv[1] == "MNIST":
-        (train, test) = mnist.read_MNIST_dataset()
+        (train, train_labels, test, test_labels) = mnist.read_MNIST_dataset()
         shape = (28, 28)
     elif sys.argv[1] == "CIFAR":
-        (train, test) = cifar.read_CIFAR_dataset()
+        (train, train_labels, test, test_labels) = cifar.read_CIFAR_dataset()
         shape = (32, 32, 3)
 
     # Fit the data
     klsh = KLSH(int(sys.argv[2]), 'linear', sys.argv[1])
-    klsh.fit(train)
+    klsh.fit(train, train_labels)
     
     # Test the data by printing cos sim with the nns
     testIndices = sys.argv[3:]
     for t in testIndices:
         tImg = test[int(t)]
         nns = klsh.nearestNeighbors(tImg, 11)
-        nns = [tImg] + nns
-        displayImages(nns, shape)
+        (images, labels) = zip(*nns)
+        images = [tImg] + images
+        displayImages(images, shape)
