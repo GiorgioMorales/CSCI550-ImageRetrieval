@@ -42,5 +42,5 @@ if __name__ == "__main__":
         tImg = test[int(t)]
         nns = klsh.nearestNeighbors(tImg, 11)
         (images, labels) = zip(*nns)
-        images = [tImg] + images
+        images = [tImg] + list(images)
         displayImages(images, shape)
