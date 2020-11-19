@@ -42,10 +42,10 @@ if __name__ == "__main__":
     results = klsh.computePrecision(query, query_label)
 
     # Test the data by printing cos sim with the nns
-    testIndices = sys.argv[3:]
-    for t in testIndices:
-        tImg = test[int(t)]
-        nns = klsh.nearestNeighbors(tImg, 11)
-        (images, labels) = zip(*nns)
-        images = [tImg] + list(images)
-        displayImages(images, shape)
+    # testIndices = sys.argv[3:]
+    # for t in testIndices:
+    #     tImg = test[int(t)]
+    #     nns = klsh.nearestNeighbors(tImg)[:11]
+    #     (images, labels) = zip(*nns)
+    #     images = [tImg] + list(images)
+    #     displayImages(images, shape)
