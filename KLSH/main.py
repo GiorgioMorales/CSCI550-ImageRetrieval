@@ -33,9 +33,14 @@ if __name__ == "__main__":
         shape = (32, 32, 3)
 
     # Fit the data
-    klsh = KLSH(int(sys.argv[2]), 'linear', sys.argv[1])
+    klsh = KLSH(int(sys.argv[2]), 'linear', sys.argv[1], randomSeed=7)
     klsh.fit(train, train_labels)
-    
+    s = np.arange(np.array(test).shape[0])
+    np.random.shuffle(s)
+    query = np.array(test)[list(s[:1000])]
+    query_label = np.array(test_labels)[list(s[:1000])]
+    results = klsh.computePrecision(query, query_label)
+
     # Test the data by printing cos sim with the nns
     testIndices = sys.argv[3:]
     for t in testIndices:
