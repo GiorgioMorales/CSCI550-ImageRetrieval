@@ -84,7 +84,7 @@ class KLSH:
         return finalHash
 
     # Gets the nearest neighbors
-    def nearestNeighbors(self, x):
+    def nearestNeighbors(self, x, numNeighbors):
         # Get the hash for the object
         h = self.hash(x)
 
@@ -104,9 +104,11 @@ class KLSH:
 
         # Grab neighbors from buckets with increasing hamming distance
         neighbors = []
-        for distance in range(len(distances)):
+        distance = 0
+        while len(neighbors) < numNeighbors:
             for hashCode in distances[distance]:
                 neighbors += self.buckets[hashCode]
+            distance += 1
 
         # Identify top matches using cosine similarity
         scores = [x.dot(n) / (np.linalg.norm(x) * np.linalg.norm(n)) for (n, _) in neighbors]
@@ -175,9 +177,11 @@ class KLSH:
         PrecisionQuery = np.zeros((len(query), kmax - kmin + 1))
         qcount = 0
         for q, l in zip(query, query_label):
-            nns = self.nearestNeighbors(q)
-            (images, labels) = zip(*nns)
+            nns = []
             for k in range(kmin, kmax + 1):
+                if len(nns) < k:
+                    nns = self.nearestNeighbors(q, k)
+                    (images, labels) = zip(*nns)
                 # Calculate precision: Prec = (\sum_i^k Rel(i))/ k)
                 sumP = 0
                 r = 0
@@ -195,5 +199,4 @@ class KLSH:
             pickle.dump(PrecisionMeanStd, fi)
 
         return PrecisionMeanStd
-
 
