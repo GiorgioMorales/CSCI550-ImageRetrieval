@@ -100,7 +100,7 @@ class TuneHash:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         # Load the trained network
-        self.model.load_state_dict(torch.load(".//models//hash-alexnet-" + self.data + "-" + str(self.bits) + "bits"))
+        self.model.load_state_dict(torch.load(".//models//hash-alexnet-" + self.data + "-" + str(self.bits) + "bits", map_location='cpu'))
         # Get the binary codes (threshold=0.5) from the H layer
         hpred = []
         fpred = []
@@ -305,7 +305,7 @@ class TuneHash:
             print(f"Searched in {toc - tic:0.4f} seconds")
 
             # Calculate precision using different values of k
-            for k in range(kmin, kmax + 1):
+            for k in range(kmin, kmin + 1):
                 # Calculate precision: Prec = (\sum_i^k Rel(i)) / k
                 sumP = 0
                 r = 0
@@ -319,6 +319,10 @@ class TuneHash:
                 PrecisionQuery[qcount, k - kmin] = sumP / (r + 1)
 
             qcount += 1
+
+        pathResult = "hashCodes//PrecisionResults-" + dataset + "-" + str(nbits) + "bits100-K"
+        with open(pathResult, 'wb') as fi:
+            pickle.dump(PrecisionQuery, fi)
 
         # Store mean and std deviation of the precision metric
         PrecisionMeanStd[:, 0] = np.mean(PrecisionQuery, axis=0)
@@ -388,15 +392,15 @@ class TuneHash:
 if __name__ == '__main__':
     # Set input arguments
     dataset = 'CIFAR'
-    nbits = 48
+    nbits = 128
 
     # Initialize network to encode the dataset with nbits bits
     hashB = TuneHash(data=dataset, bits=nbits, batch_size=50, shuffle=False)
     # hashB.train(epochs=100)  # Uncomment if you want to train the network again. Use batch_size=64 for training
 
     # Get metrics
-    # results = hashB.calculatePrecision()
-
-    hashB.printQuery(q=40)
-    hashB.printQuery(q=50)
-    hashB.printQuery(q=60)
+    results = hashB.calculatePrecision()
+    #
+    # hashB.printQuery(q=40)
+    # hashB.printQuery(q=50)
+    # hashB.printQuery(q=60)

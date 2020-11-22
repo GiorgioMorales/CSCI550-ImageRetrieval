@@ -178,7 +178,7 @@ class KLSH:
         qcount = 0
         for q, l in zip(query, query_label):
             nns = []
-            for k in range(kmin, kmax + 1):
+            for k in range(kmin, kmin + 1):
                 if len(nns) < k:
                     nns = self.nearestNeighbors(q, k)
                     (images, labels) = zip(*nns)
@@ -190,6 +190,10 @@ class KLSH:
                     sumP += (l == labels[r])
                 PrecisionQuery[qcount, k-kmin] = sumP / (r+1)
             qcount += 1
+        pathResult = "hashes//PrecisionResults-" + self.datasetName + "-" + str(self.numBits) + "bits100-K"
+        with open(pathResult, 'wb') as fi:
+            pickle.dump(PrecisionQuery, fi)
+
         PrecisionMeanStd[:, 0] = np.mean(PrecisionQuery, axis=0)
         PrecisionMeanStd[:, 1] = np.std(PrecisionQuery, axis=0)
 
