@@ -25,7 +25,7 @@ Figure 1. Image retrieval precision for MNIST and CIFAR for different values of 
 
 ### Image Retrieval Results
 
-Fig. 2 shows the variation of precision for both datasets using $b=48$ and $b=128$. As it can be seen, the method shows stable performance regardless the number of images retrieved. This behavior is very similar to that shown in the original paper. In addition, Fig.~\ref{fig:deep} shows some examples of the 11-top similar images retrieved from the dataset given a query image (upper left). For more examples, check our [results folder](https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/tree/master/DeepBinaryHash/results). 
+Fig. 2 shows the variation of precision for both datasets using `b=48` and `b=128`. As it can be seen, the method shows stable performance regardless the number of images retrieved. This behavior is very similar to that shown in the original paper. In addition, Fig. 3 shows some examples of the 11-top similar images retrieved from the dataset given a query image (upper left). For more examples, check our [results folder](https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/tree/master/DeepBinaryHash/results). 
 
 <img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/DeepBinaryHash/results/ComparisonK.png alt="alt text" width=550 height=400>
 Figure 2. Image retrieval precision for MNIST and CIFAR for different values of *k* using Deep Hash-like codes. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
