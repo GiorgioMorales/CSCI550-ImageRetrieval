@@ -17,4 +17,20 @@ We selected 1,000 random query images for the system to retrieve relevant images
 Fig. 1 shows the precision of both datasets using `b=48` and `b=128`. As shown by the figure, the method decreases in performance as the value of *k* increased. There was also a stark difference between the MNIST and the CIFAR datasets' performance where the algorithm dramatically decreased in performance with the CIFAR dataset.
 
 <img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/KLSH/results/KLSH.png alt="alt text" width=550 height=400>
-Figure 1. Image retrieval precision for MNIST and CIFAR for different values of $k$. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
+Figure 1. Image retrieval precision for MNIST and CIFAR for different values of $k$ using KLSH. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
+
+## Image Retrieval using Deep Learning
+
+[Lin et. al](https://openaccess.thecvf.com/content_cvpr_workshops_2015/W03/papers/Lin_Deep_Learning_of_2015_CVPR_paper.pdf) proposed a method to retrieve similar images within a dataset given a query image using a Convolutional Neural Network trained to simultaneously learn image representations and binary codes. The main assumption is that the data is labeled; thus, the method works using a supervised learning fashion.
+
+### Image Retrieval Results
+
+Fig. 2 shows the variation of precision for both datasets using $b=48$ and $b=128$. As it can be seen, the method shows stable performance regardless the number of images retrieved. This behavior is very similar to that shown in the original paper. In addition, Fig.~\ref{fig:deep} shows some examples of the 11-top similar images retrieved from the dataset given a query image (upper left). For more examples, check our [results folder](https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/tree/master/DeepBinaryHash/results). 
+
+<img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/DeepBinaryHash/results/ComparisonK.png alt="alt text" width=550 height=400>
+Figure 2. Image retrieval precision for MNIST and CIFAR for different values of *k* using Deep Hash-like codes. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
+
+
+<img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/DeepBinaryHash/results/CIFAR_48bits_ex6.png alt="alt text" width=550 height=400>
+<img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/DeepBinaryHash/results/CIFAR_48bits_ex4.png alt="alt text" width=550 height=400>
+Figure 3. 11-top similar images retrieved from the dataset given a query image (upper left) for the CIFAR dataset.
