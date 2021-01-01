@@ -17,7 +17,7 @@ We selected 1,000 random query images for the system to retrieve relevant images
 Fig. 1 shows the precision of both datasets using `b=48` and `b=128`. As shown by the figure, the method decreases in performance as the value of *k* increased. There was also a stark difference between the MNIST and the CIFAR datasets' performance where the algorithm dramatically decreased in performance with the CIFAR dataset.
 
 <img src=https://github.com/GiorgioMorales/CSCI550-ImageRetrieval/blob/master/KLSH/results/KLSH.png alt="alt text" width=550 height=400>
-Figure 1. Image retrieval precision for MNIST and CIFAR for different values of $k$ using KLSH. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
+Figure 1. Image retrieval precision for MNIST and CIFAR for different values of `k` using KLSH. Plotted is the samples average precision for each image retrieved and an approximate 95% confidence interval for the true average precision.
 
 ## Image Retrieval using Deep Learning
 
